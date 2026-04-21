@@ -20,6 +20,8 @@ This fork works with a fixed list of IPs previously attached to the server.
 
 ---
 
+> **Running without Docker?** See [local/README.md](local/README.md) for an installer that uses pre-built `3proxy` binaries (linux/amd64 and linux/arm64) and registers a `systemd` service.
+
 ## Quick Start
 
 ### Prerequisites
@@ -210,6 +212,8 @@ Crie seu próprio servidor de proxy de backconnect IPv6 com Docker em qualquer d
 Este código é uma adaptação do projeto original.
 O design original funciona com um bloco inteiro de IPv6 anexado ao servidor.
 Este fork funciona com uma lista fixa de IPs previamente anexados ao servidor.
+
+> **Quer rodar sem Docker?** Veja [local/README.md](local/README.md) — tem um instalador que usa os binários do `3proxy` pré-buildados (linux/amd64 e linux/arm64) e registra um serviço `systemd`.
 
 ## Início Rápido
 
