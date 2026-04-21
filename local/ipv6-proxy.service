@@ -1,0 +1,17 @@
+[Unit]
+Description=IPv6 Multiple Proxy Server (3proxy)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/ipv6-proxy-run /etc/ipv6-proxy/proxy.env
+Restart=always
+RestartSec=3
+LimitNOFILE=600000
+LimitNPROC=600000
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
