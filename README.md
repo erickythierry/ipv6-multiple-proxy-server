@@ -17,6 +17,7 @@ This fork works with a fixed list of IPs previously attached to the server.
 - Multi-stage Docker build (lightweight final image)
 - Supports username/password authentication
 - Supports host allow/deny rules
+- Multi-arch Docker image (linux/amd64 + linux/arm64)
 
 ---
 
@@ -38,7 +39,7 @@ docker run --privileged -d \
   --name ipv6-proxy \
   --network host \
   --restart always \
-  ethie/ipv6-multiple-proxy-server:v5
+  ethie/ipv6-multiple-proxy-server:v6
 ```
 
 ### Check the logs to see created proxies:
@@ -139,6 +140,15 @@ Each port should return a different IPv6 address, confirming that all proxies ar
 ```bash
 docker build -t ipv6-proxy .
 ```
+> This builds only for your host architecture.
+
+### Multi-arch build (amd64 + arm64)
+
+```bash
+# Prerequisite (once per host):
+#   docker run --privileged --rm tonistiigi/binfmt --install arm64
+IMAGE_TAG=v6 ./build-multiarch.sh
+```
 
 Then run:
 ```bash
@@ -162,7 +172,7 @@ docker run --privileged -d \
   -e PROXY_USER=admin -e PROXY_PASS=secretpass \
   -e START_PORT=40000 -e PROXY_TYPE=socks5 \
   --name ipv6-proxy --network host --restart always \
-  ethie/ipv6-multiple-proxy-server:v5
+  ethie/ipv6-multiple-proxy-server:v6
 ```
 
 ### HTTP proxy without auth:
@@ -170,7 +180,7 @@ docker run --privileged -d \
 docker run --privileged -d \
   -e START_PORT=50000 -e PROXY_TYPE=http \
   --name ipv6-proxy --network host --restart always \
-  ethie/ipv6-multiple-proxy-server:v5
+  ethie/ipv6-multiple-proxy-server:v6
 ```
 
 ### With host restrictions:
@@ -179,7 +189,7 @@ docker run --privileged -d \
   -e PROXY_USER=admin -e PROXY_PASS=pass \
   -e ALLOWED_HOSTS="google.com,*.google.com" \
   --name ipv6-proxy --network host --restart always \
-  ethie/ipv6-multiple-proxy-server:v5
+  ethie/ipv6-multiple-proxy-server:v6
 ```
 
 ### Specifying network interface:
@@ -188,7 +198,7 @@ docker run --privileged -d \
   -e PROXY_USER=admin -e PROXY_PASS=pass \
   -e NET_INTERFACE=ens3 \
   --name ipv6-proxy --network host --restart always \
-  ethie/ipv6-multiple-proxy-server:v5
+  ethie/ipv6-multiple-proxy-server:v6
 ```
 
 ---
@@ -199,6 +209,7 @@ docker run --privileged -d \
 - The container **must** use `--privileged` to configure sysctl network parameters.
 - One proxy is created per global IPv6 address found on the system.
 - Ports are assigned sequentially starting from `START_PORT`.
+- The published image `ethie/ipv6-multiple-proxy-server:v6+` is multi-arch (linux/amd64 and linux/arm64). Docker resolves the correct variant automatically.
 
 ---
 
@@ -212,6 +223,8 @@ Crie seu próprio servidor de proxy de backconnect IPv6 com Docker em qualquer d
 Este código é uma adaptação do projeto original.
 O design original funciona com um bloco inteiro de IPv6 anexado ao servidor.
 Este fork funciona com uma lista fixa de IPs previamente anexados ao servidor.
+
+- Imagem Docker multi-arch (linux/amd64 + linux/arm64)
 
 > **Quer rodar sem Docker?** Veja [local/README.md](local/README.md) — tem um instalador que usa os binários do `3proxy` pré-buildados (linux/amd64 e linux/arm64) e registra um serviço `systemd`.
 
@@ -231,7 +244,7 @@ docker run --privileged -d \
   --name ipv6-proxy \
   --network host \
   --restart always \
-  ethie/ipv6-multiple-proxy-server:v5
+  ethie/ipv6-multiple-proxy-server:v6
 ```
 
 ### Ver os proxies criados e logs:
@@ -289,6 +302,18 @@ Cada porta deve retornar um endereço IPv6 diferente, confirmando que todos os p
 ### Build local:
 ```bash
 docker build -t ipv6-proxy .
+```
+> Builda apenas para a arquitetura do host.
+
+### Build multi-arch (amd64 + arm64):
+```bash
+# Pré-requisito (uma vez por host):
+#   docker run --privileged --rm tonistiigi/binfmt --install arm64
+IMAGE_TAG=v6 ./build-multiarch.sh
+```
+
+Depois execute:
+```bash
 docker run --privileged -d \
   -e PROXY_USER=usuario \
   -e PROXY_PASS=senha \
@@ -303,6 +328,7 @@ docker run --privileged -d \
 - O container **precisa** usar `--privileged` para configurar parâmetros sysctl de rede.
 - Um proxy é criado por endereço IPv6 global encontrado no sistema.
 - As portas são atribuídas sequencialmente a partir do `START_PORT`.
+- A imagem publicada `ethie/ipv6-multiple-proxy-server:v6+` é multi-arch (linux/amd64 e linux/arm64). O Docker resolve a variante correta automaticamente.
 
 ---
 
