@@ -46,6 +46,7 @@ NET_INTERFACE="${NET_INTERFACE:-}"
 PROXY_TYPE="${PROXY_TYPE:-socks5}"
 ALLOWED_HOSTS="${ALLOWED_HOSTS:-}"
 DENIED_HOSTS="${DENIED_HOSTS:-}"
+SIMPLE_MODE="${SIMPLE_MODE:-}"
 PROXY_BIN="${PROXY_BIN:-/usr/local/bin/3proxy}"
 CONFIG_FILE="${CONFIG_FILE:-/etc/3proxy/3proxy.cfg}"
 RUN_USER_UID="${RUN_USER_UID:-65534}"
@@ -60,6 +61,14 @@ if [ "$PROXY_TYPE" != "http" ] && [ "$PROXY_TYPE" != "socks5" ]; then
   log_err "PROXY_TYPE inválido: '$PROXY_TYPE'. Use 'http' ou 'socks5'."
   exit 1
 fi
+
+# === Modo simples (IPv4, proxy único) ===
+case "${SIMPLE_MODE,,}" in
+  1|true|yes)
+    SIMPLE_MODE="1"
+    log_info "Modo SIMPLE_MODE ativado: será criado 1 proxy IPv4 simples na porta ${START_PORT}."
+    ;;
+esac
 
 # === Auto-detectar interface ===
 if [ -z "$NET_INTERFACE" ]; then
@@ -79,47 +88,52 @@ if ! ip link show "$NET_INTERFACE" &>/dev/null; then
   exit 1
 fi
 
-# === Checar IPv6 ===
-log_step "Verificando IPv6..."
-if ! test -f /proc/net/if_inet6; then
-  log_err "IPv6 não habilitado no kernel."
-  exit 1
-fi
-if [ -z "$(ip -6 addr show scope global 2>/dev/null)" ]; then
-  log_err "Nenhum endereço IPv6 global no sistema."
-  exit 1
-fi
-
-# === sysctl ===
-log_step "Configurando sysctl IPv6..."
-for opt in \
-  "net.ipv6.conf.${NET_INTERFACE}.proxy_ndp=1" \
-  "net.ipv6.conf.all.proxy_ndp=1" \
-  "net.ipv6.conf.default.forwarding=1" \
-  "net.ipv6.conf.all.forwarding=1" \
-  "net.ipv6.ip_nonlocal_bind=1"; do
-  if ! sysctl -w "$opt" &>/dev/null; then
-    log_warn "Falha: $opt"
+# === Checar IPv6 (apenas no modo padrão) ===
+if [ "$SIMPLE_MODE" != "1" ]; then
+  log_step "Verificando IPv6..."
+  if ! test -f /proc/net/if_inet6; then
+    log_err "IPv6 não habilitado no kernel."
+    exit 1
   fi
-done
+  if [ -z "$(ip -6 addr show scope global 2>/dev/null)" ]; then
+    log_err "Nenhum endereço IPv6 global no sistema."
+    exit 1
+  fi
 
-# === Coletar IPv6 globais ===
-log_step "Coletando endereços IPv6 globais..."
-mapfile -t IPV6_LIST < <(
-  ip -6 addr show scope global 2>/dev/null \
-    | awk '/inet6/ { print $2 }' \
-    | cut -d'/' -f1 \
-    | grep -E '^[23][0-9a-fA-F]{3}:'
-)
+  # === sysctl ===
+  log_step "Configurando sysctl IPv6..."
+  for opt in \
+    "net.ipv6.conf.${NET_INTERFACE}.proxy_ndp=1" \
+    "net.ipv6.conf.all.proxy_ndp=1" \
+    "net.ipv6.conf.default.forwarding=1" \
+    "net.ipv6.conf.all.forwarding=1" \
+    "net.ipv6.ip_nonlocal_bind=1"; do
+    if ! sysctl -w "$opt" &>/dev/null; then
+      log_warn "Falha: $opt"
+    fi
+  done
 
-if [ ${#IPV6_LIST[@]} -eq 0 ]; then
-  log_err "Nenhum IPv6 global válido encontrado."
-  exit 1
+  # === Coletar IPv6 globais ===
+  log_step "Coletando endereços IPv6 globais..."
+  mapfile -t IPV6_LIST < <(
+    ip -6 addr show scope global 2>/dev/null \
+      | awk '/inet6/ { print $2 }' \
+      | cut -d'/' -f1 \
+      | grep -E '^[23][0-9a-fA-F]{3}:'
+  )
+
+  if [ ${#IPV6_LIST[@]} -eq 0 ]; then
+    log_err "Nenhum IPv6 global válido encontrado."
+    exit 1
+  fi
+
+  PROXY_COUNT=${#IPV6_LIST[@]}
+  LAST_PORT=$((START_PORT + PROXY_COUNT - 1))
+  log_info "${BOLD}${PROXY_COUNT}${NC} endereços IPv6 globais encontrados."
+else
+  PROXY_COUNT=1
+  LAST_PORT=$START_PORT
 fi
-
-PROXY_COUNT=${#IPV6_LIST[@]}
-LAST_PORT=$((START_PORT + PROXY_COUNT - 1))
-log_info "${BOLD}${PROXY_COUNT}${NC} endereços IPv6 globais encontrados."
 
 if [ "$START_PORT" -lt 1024 ] || [ "$LAST_PORT" -gt 65535 ]; then
   log_err "Range de portas inválido: ${START_PORT}-${LAST_PORT}"
@@ -183,17 +197,28 @@ CFGHEADER
   fi
   echo ""
 
-  if [ "$PROXY_TYPE" = "http" ]; then
-    PROXY_CMD="proxy -6 -n -a"
+  if [ "$SIMPLE_MODE" = "1" ]; then
+    # Modo simples IPv4: 1 proxy sem flags IPv6 e sem IP de saída específico
+    if [ "$PROXY_TYPE" = "http" ]; then
+      PROXY_CMD="proxy -n -a"
+    else
+      PROXY_CMD="socks -a"
+    fi
+    echo "${PROXY_CMD} -p${START_PORT} -i0.0.0.0"
   else
-    PROXY_CMD="socks -6 -a"
-  fi
+    # Modo padrão: um proxy por IPv6
+    if [ "$PROXY_TYPE" = "http" ]; then
+      PROXY_CMD="proxy -6 -n -a"
+    else
+      PROXY_CMD="socks -6 -a"
+    fi
 
-  PORT=$START_PORT
-  for IPV6 in "${IPV6_LIST[@]}"; do
-    echo "${PROXY_CMD} -p${PORT} -i0.0.0.0 -e${IPV6}"
-    PORT=$((PORT + 1))
-  done
+    PORT=$START_PORT
+    for IPV6 in "${IPV6_LIST[@]}"; do
+      echo "${PROXY_CMD} -p${PORT} -i0.0.0.0 -e${IPV6}"
+      PORT=$((PORT + 1))
+    done
+  fi
 } > "$CONFIG_FILE"
 
 log_info "Configuração gerada."
@@ -203,16 +228,28 @@ echo ""
 echo -e "${CYAN}${BOLD}══════════════════════════════════════════════════════════════════════════${NC}"
 echo -e "${CYAN}${BOLD}  PROXIES CRIADOS${NC}"
 echo -e "${CYAN}${BOLD}══════════════════════════════════════════════════════════════════════════${NC}"
-printf "  ${DIM}%-5s${NC} │ ${BOLD}%-7s${NC} │ ${BOLD}%-7s${NC} │ ${BOLD}%-45s${NC}\n" "#" "PORTA" "TIPO" "SAÍDA IPv6"
-echo -e "  ${DIM}──────┼─────────┼─────────┼──────────────────────────────────────────────${NC}"
-PORT=$START_PORT; COUNT=1
-for IPV6 in "${IPV6_LIST[@]}"; do
-  printf "  %-5s │ %-7s │ %-7s │ %-45s\n" "$COUNT" "$PORT" "$PROXY_TYPE" "$IPV6"
-  PORT=$((PORT + 1)); COUNT=$((COUNT + 1))
-done
+
+if [ "$SIMPLE_MODE" = "1" ]; then
+  printf "  ${DIM}%-5s${NC} │ ${BOLD}%-7s${NC} │ ${BOLD}%-7s${NC} │ ${BOLD}%-45s${NC}\n" "#" "PORTA" "TIPO" "SAÍDA"
+  echo -e "  ${DIM}──────┼─────────┼─────────┼──────────────────────────────────────────────${NC}"
+  printf "  %-5s │ %-7s │ %-7s │ %-45s\n" "1" "$START_PORT" "$PROXY_TYPE" "IPv4 (todas as interfaces)"
+else
+  printf "  ${DIM}%-5s${NC} │ ${BOLD}%-7s${NC} │ ${BOLD}%-7s${NC} │ ${BOLD}%-45s${NC}\n" "#" "PORTA" "TIPO" "SAÍDA IPv6"
+  echo -e "  ${DIM}──────┼─────────┼─────────┼──────────────────────────────────────────────${NC}"
+  PORT=$START_PORT; COUNT=1
+  for IPV6 in "${IPV6_LIST[@]}"; do
+    printf "  %-5s │ %-7s │ %-7s │ %-45s\n" "$COUNT" "$PORT" "$PROXY_TYPE" "$IPV6"
+    PORT=$((PORT + 1)); COUNT=$((COUNT + 1))
+  done
+fi
+
 echo -e "${CYAN}${BOLD}══════════════════════════════════════════════════════════════════════════${NC}"
 echo -e "  ${BOLD}Total:${NC} ${PROXY_COUNT} proxies"
-echo -e "  ${BOLD}Portas:${NC} ${START_PORT} - ${LAST_PORT}"
+if [ "$SIMPLE_MODE" != "1" ]; then
+  echo -e "  ${BOLD}Portas:${NC} ${START_PORT} - ${LAST_PORT}"
+else
+  echo -e "  ${BOLD}Porta:${NC} ${START_PORT}"
+fi
 echo -e "  ${BOLD}Tipo:${NC} ${PROXY_TYPE}"
 if [ "$USE_AUTH" = true ]; then
   echo -e "  ${BOLD}Auth:${NC} ${PROXY_USER}:${PROXY_PASS}"

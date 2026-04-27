@@ -38,12 +38,21 @@ NET_INTERFACE="${NET_INTERFACE:-}"
 PROXY_TYPE="${PROXY_TYPE:-socks5}"
 ALLOWED_HOSTS="${ALLOWED_HOSTS:-}"
 DENIED_HOSTS="${DENIED_HOSTS:-}"
+SIMPLE_MODE="${SIMPLE_MODE:-}"
 
 # === Validar tipo de proxy ===
 if [ "$PROXY_TYPE" != "http" ] && [ "$PROXY_TYPE" != "socks5" ]; then
   log_error "PROXY_TYPE inválido: '$PROXY_TYPE'. Use 'http' ou 'socks5'."
   exit 1
 fi
+
+# === Modo simples (IPv4, proxy único) ===
+case "${SIMPLE_MODE,,}" in
+  1|true|yes)
+    SIMPLE_MODE="1"
+    log_info "Modo SIMPLE_MODE ativado: será criado 1 proxy IPv4 simples na porta ${START_PORT}."
+    ;;
+esac
 
 # === Auto-detectar interface de rede se não definida ===
 if [ -z "$NET_INTERFACE" ]; then
@@ -67,66 +76,75 @@ if ! ip link show "$NET_INTERFACE" &>/dev/null; then
   exit 1
 fi
 
-# === Verificar IPv6 ===
-log_step "Verificando suporte a IPv6..."
+# === Verificar IPv6 (apenas no modo padrão) ===
+if [ "$SIMPLE_MODE" != "1" ]; then
+  log_step "Verificando suporte a IPv6..."
 
-if ! test -f /proc/net/if_inet6; then
-  log_error "IPv6 não está habilitado no sistema."
-  log_error "Certifique-se de que o host suporta IPv6 e que o container tem acesso."
-  exit 1
-fi
-
-if [ -z "$(ip -6 addr show scope global 2>/dev/null)" ]; then
-  log_error "Nenhum endereço IPv6 global encontrado."
-  log_error "Verifique se há IPv6 atribuído ao servidor e se o container usa --network host."
-  exit 1
-fi
-
-log_info "IPv6 habilitado e endereços globais encontrados."
-
-# === Configurar sysctl para IPv6 ===
-log_step "Configurando parâmetros de rede IPv6 (sysctl)..."
-
-sysctl_ok=true
-for opt in \
-  "net.ipv6.conf.${NET_INTERFACE}.proxy_ndp=1" \
-  "net.ipv6.conf.all.proxy_ndp=1" \
-  "net.ipv6.conf.default.forwarding=1" \
-  "net.ipv6.conf.all.forwarding=1" \
-  "net.ipv6.ip_nonlocal_bind=1"; do
-  if ! sysctl -w "$opt" &>/dev/null; then
-    log_warn "Falha ao configurar: $opt"
-    sysctl_ok=false
+  if ! test -f /proc/net/if_inet6; then
+    log_error "IPv6 não está habilitado no sistema."
+    log_error "Certifique-se de que o host suporta IPv6 e que o container tem acesso."
+    exit 1
   fi
-done
 
-if [ "$sysctl_ok" = true ]; then
-  log_info "Parâmetros sysctl IPv6 configurados com sucesso."
+  if [ -z "$(ip -6 addr show scope global 2>/dev/null)" ]; then
+    log_error "Nenhum endereço IPv6 global encontrado."
+    log_error "Verifique se há IPv6 atribuído ao servidor e se o container usa --network host."
+    exit 1
+  fi
+
+  log_info "IPv6 habilitado e endereços globais encontrados."
+fi
+
+# === Configurar sysctl para IPv6 (apenas no modo padrão) ===
+if [ "$SIMPLE_MODE" != "1" ]; then
+  log_step "Configurando parâmetros de rede IPv6 (sysctl)..."
+
+  sysctl_ok=true
+  for opt in \
+    "net.ipv6.conf.${NET_INTERFACE}.proxy_ndp=1" \
+    "net.ipv6.conf.all.proxy_ndp=1" \
+    "net.ipv6.conf.default.forwarding=1" \
+    "net.ipv6.conf.all.forwarding=1" \
+    "net.ipv6.ip_nonlocal_bind=1"; do
+    if ! sysctl -w "$opt" &>/dev/null; then
+      log_warn "Falha ao configurar: $opt"
+      sysctl_ok=false
+    fi
+  done
+
+  if [ "$sysctl_ok" = true ]; then
+    log_info "Parâmetros sysctl IPv6 configurados com sucesso."
+  else
+    log_warn "Alguns parâmetros sysctl falharam. O container precisa de --privileged."
+  fi
+fi
+
+# === Detectar endereços IPv6 globais (apenas no modo padrão) ===
+if [ "$SIMPLE_MODE" = "1" ]; then
+  PROXY_COUNT=1
+  LAST_PORT=$START_PORT
 else
-  log_warn "Alguns parâmetros sysctl falharam. O container precisa de --privileged."
+  log_step "Detectando endereços IPv6 globais..."
+
+  mapfile -t IPV6_LIST < <(
+    ip -6 addr show scope global 2>/dev/null \
+      | awk '/inet6/ { print $2 }' \
+      | cut -d'/' -f1 \
+      | grep -E '^[23][0-9a-fA-F]{3}:'
+  )
+
+  if [ ${#IPV6_LIST[@]} -eq 0 ]; then
+    log_error "Nenhum endereço IPv6 global válido encontrado!"
+    log_error "Endereços IPv6 no sistema:"
+    ip -6 addr show | awk '/inet6/ { print "  "$2 }'
+    exit 1
+  fi
+
+  PROXY_COUNT=${#IPV6_LIST[@]}
+  LAST_PORT=$((START_PORT + PROXY_COUNT - 1))
+
+  log_info "Encontrados ${BOLD}${PROXY_COUNT}${NC} endereços IPv6 globais."
 fi
-
-# === Detectar endereços IPv6 globais ===
-log_step "Detectando endereços IPv6 globais..."
-
-mapfile -t IPV6_LIST < <(
-  ip -6 addr show scope global 2>/dev/null \
-    | awk '/inet6/ { print $2 }' \
-    | cut -d'/' -f1 \
-    | grep -E '^[23][0-9a-fA-F]{3}:'
-)
-
-if [ ${#IPV6_LIST[@]} -eq 0 ]; then
-  log_error "Nenhum endereço IPv6 global válido encontrado!"
-  log_error "Endereços IPv6 no sistema:"
-  ip -6 addr show | awk '/inet6/ { print "  "$2 }'
-  exit 1
-fi
-
-PROXY_COUNT=${#IPV6_LIST[@]}
-LAST_PORT=$((START_PORT + PROXY_COUNT - 1))
-
-log_info "Encontrados ${BOLD}${PROXY_COUNT}${NC} endereços IPv6 globais."
 
 # === Validar porta inicial ===
 if [ "$START_PORT" -lt 1024 ] || [ "$LAST_PORT" -gt 65535 ]; then
@@ -205,18 +223,29 @@ fi
 
 echo "" >> "$CONFIG_FILE"
 
-# Entradas de proxy (uma por IPv6)
-if [ "$PROXY_TYPE" = "http" ]; then
-  PROXY_CMD="proxy -6 -n -a"
+# Entradas de proxy
+if [ "$SIMPLE_MODE" = "1" ]; then
+  # Modo simples IPv4: 1 proxy sem flags IPv6 e sem IP de saída específico
+  if [ "$PROXY_TYPE" = "http" ]; then
+    PROXY_CMD="proxy -n -a"
+  else
+    PROXY_CMD="socks -a"
+  fi
+  echo "${PROXY_CMD} -p${START_PORT} -i0.0.0.0" >> "$CONFIG_FILE"
 else
-  PROXY_CMD="socks -6 -a"
-fi
+  # Modo padrão: um proxy por IPv6
+  if [ "$PROXY_TYPE" = "http" ]; then
+    PROXY_CMD="proxy -6 -n -a"
+  else
+    PROXY_CMD="socks -6 -a"
+  fi
 
-PORT=$START_PORT
-for IPV6 in "${IPV6_LIST[@]}"; do
-  echo "${PROXY_CMD} -p${PORT} -i0.0.0.0 -e${IPV6}" >> "$CONFIG_FILE"
-  ((PORT++))
-done
+  PORT=$START_PORT
+  for IPV6 in "${IPV6_LIST[@]}"; do
+    echo "${PROXY_CMD} -p${PORT} -i0.0.0.0 -e${IPV6}" >> "$CONFIG_FILE"
+    ((PORT++))
+  done
+fi
 
 log_info "Configuração gerada em: ${CONFIG_FILE}"
 
@@ -225,20 +254,30 @@ echo ""
 echo -e "${CYAN}${BOLD}══════════════════════════════════════════════════════════════════════════${NC}"
 echo -e "${CYAN}${BOLD}  PROXIES CRIADOS${NC}"
 echo -e "${CYAN}${BOLD}══════════════════════════════════════════════════════════════════════════${NC}"
-printf "  ${DIM}%-5s${NC} │ ${BOLD}%-7s${NC} │ ${BOLD}%-7s${NC} │ ${BOLD}%-45s${NC}\n" "#" "PORTA" "TIPO" "SAÍDA IPv6"
-echo -e "  ${DIM}──────┼─────────┼─────────┼──────────────────────────────────────────────${NC}"
 
-PORT=$START_PORT
-COUNT=1
-for IPV6 in "${IPV6_LIST[@]}"; do
-  printf "  %-5s │ %-7s │ %-7s │ %-45s\n" "$COUNT" "$PORT" "$PROXY_TYPE" "$IPV6"
-  ((PORT++))
-  ((COUNT++))
-done
+if [ "$SIMPLE_MODE" = "1" ]; then
+  printf "  ${DIM}%-5s${NC} │ ${BOLD}%-7s${NC} │ ${BOLD}%-7s${NC} │ ${BOLD}%-45s${NC}\n" "#" "PORTA" "TIPO" "SAÍDA"
+  echo -e "  ${DIM}──────┼─────────┼─────────┼──────────────────────────────────────────────${NC}"
+  printf "  %-5s │ %-7s │ %-7s │ %-45s\n" "1" "$START_PORT" "$PROXY_TYPE" "IPv4 (todas as interfaces)"
+else
+  printf "  ${DIM}%-5s${NC} │ ${BOLD}%-7s${NC} │ ${BOLD}%-7s${NC} │ ${BOLD}%-45s${NC}\n" "#" "PORTA" "TIPO" "SAÍDA IPv6"
+  echo -e "  ${DIM}──────┼─────────┼─────────┼──────────────────────────────────────────────${NC}"
+  PORT=$START_PORT
+  COUNT=1
+  for IPV6 in "${IPV6_LIST[@]}"; do
+    printf "  %-5s │ %-7s │ %-7s │ %-45s\n" "$COUNT" "$PORT" "$PROXY_TYPE" "$IPV6"
+    ((PORT++))
+    ((COUNT++))
+  done
+fi
 
 echo -e "${CYAN}${BOLD}══════════════════════════════════════════════════════════════════════════${NC}"
 echo -e "  ${BOLD}Total:${NC} ${PROXY_COUNT} proxies"
-echo -e "  ${BOLD}Portas:${NC} ${START_PORT} - ${LAST_PORT}"
+if [ "$SIMPLE_MODE" != "1" ]; then
+  echo -e "  ${BOLD}Portas:${NC} ${START_PORT} - ${LAST_PORT}"
+else
+  echo -e "  ${BOLD}Porta:${NC} ${START_PORT}"
+fi
 echo -e "  ${BOLD}Tipo:${NC} ${PROXY_TYPE}"
 if [ "$USE_AUTH" = true ]; then
   echo -e "  ${BOLD}Auth:${NC} ${PROXY_USER}:${PROXY_PASS}"

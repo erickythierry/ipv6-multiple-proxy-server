@@ -25,7 +25,7 @@ FROM ubuntu:22.04
 
 LABEL maintainer="erickythierry" \
       description="IPv6 Multiple Proxy Server using 3proxy" \
-      version="5.0"
+      version="7.0"
 
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
@@ -51,6 +51,7 @@ ENV PROXY_USER="" \
     NET_INTERFACE="" \
     PROXY_TYPE="socks5" \
     ALLOWED_HOSTS="" \
-    DENIED_HOSTS=""
+    DENIED_HOSTS="" \
+    SIMPLE_MODE=""
 
 ENTRYPOINT ["/entrypoint.sh"]

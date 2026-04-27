@@ -39,7 +39,7 @@ docker run --privileged -d \
   --name ipv6-proxy \
   --network host \
   --restart always \
-  ethie/ipv6-multiple-proxy-server:v6
+  ethie/ipv6-multiple-proxy-server:v7
 ```
 
 ### Check the logs to see created proxies:
@@ -130,6 +130,7 @@ Each port should return a different IPv6 address, confirming that all proxies ar
 | `PROXY_TYPE` | No | `socks5` | Proxy type: `socks5` or `http` |
 | `ALLOWED_HOSTS` | No | _(empty)_ | Allowed hosts (3proxy format). Others are denied |
 | `DENIED_HOSTS` | No | _(empty)_ | Denied hosts (3proxy format). Others are allowed |
+| `SIMPLE_MODE` | No | _(empty)_ | Set to `1` to create a single IPv4 proxy on `START_PORT`, skipping IPv6 enumeration |
 
 > **Note:** If neither `PROXY_USER` nor `PROXY_PASS` is set, proxies will run **without authentication**.
 
@@ -172,7 +173,7 @@ docker run --privileged -d \
   -e PROXY_USER=admin -e PROXY_PASS=secretpass \
   -e START_PORT=40000 -e PROXY_TYPE=socks5 \
   --name ipv6-proxy --network host --restart always \
-  ethie/ipv6-multiple-proxy-server:v6
+  ethie/ipv6-multiple-proxy-server:v7
 ```
 
 ### HTTP proxy without auth:
@@ -180,7 +181,7 @@ docker run --privileged -d \
 docker run --privileged -d \
   -e START_PORT=50000 -e PROXY_TYPE=http \
   --name ipv6-proxy --network host --restart always \
-  ethie/ipv6-multiple-proxy-server:v6
+  ethie/ipv6-multiple-proxy-server:v7
 ```
 
 ### With host restrictions:
@@ -189,7 +190,7 @@ docker run --privileged -d \
   -e PROXY_USER=admin -e PROXY_PASS=pass \
   -e ALLOWED_HOSTS="google.com,*.google.com" \
   --name ipv6-proxy --network host --restart always \
-  ethie/ipv6-multiple-proxy-server:v6
+  ethie/ipv6-multiple-proxy-server:v7
 ```
 
 ### Specifying network interface:
@@ -198,7 +199,18 @@ docker run --privileged -d \
   -e PROXY_USER=admin -e PROXY_PASS=pass \
   -e NET_INTERFACE=ens3 \
   --name ipv6-proxy --network host --restart always \
-  ethie/ipv6-multiple-proxy-server:v6
+  ethie/ipv6-multiple-proxy-server:v7
+```
+
+### Simple IPv4 proxy (single proxy, no IPv6 required):
+```bash
+docker run -d \
+  -e SIMPLE_MODE=1 \
+  -e START_PORT=8080 \
+  -e PROXY_TYPE=socks5 \
+  -p 8080:8080 \
+  --name ipv4-proxy --restart always \
+  ethie/ipv6-multiple-proxy-server:v7
 ```
 
 ---
@@ -209,7 +221,8 @@ docker run --privileged -d \
 - The container **must** use `--privileged` to configure sysctl network parameters.
 - One proxy is created per global IPv6 address found on the system.
 - Ports are assigned sequentially starting from `START_PORT`.
-- The published image `ethie/ipv6-multiple-proxy-server:v6+` is multi-arch (linux/amd64 and linux/arm64). Docker resolves the correct variant automatically.
+- When `SIMPLE_MODE=1`, the container skips IPv6 detection and creates a single IPv4 proxy. `--privileged` is not required in this mode.
+- The published image `ethie/ipv6-multiple-proxy-server:v7+` is multi-arch (linux/amd64 and linux/arm64). Docker resolves the correct variant automatically.
 
 ---
 
@@ -244,7 +257,7 @@ docker run --privileged -d \
   --name ipv6-proxy \
   --network host \
   --restart always \
-  ethie/ipv6-multiple-proxy-server:v6
+  ethie/ipv6-multiple-proxy-server:v7
 ```
 
 ### Ver os proxies criados e logs:
@@ -298,6 +311,7 @@ Cada porta deve retornar um endereço IPv6 diferente, confirmando que todos os p
 | `PROXY_TYPE` | Não | `socks5` | Tipo de proxy: `socks5` ou `http` |
 | `ALLOWED_HOSTS` | Não | _(vazio)_ | Hosts permitidos (formato 3proxy). Outros são bloqueados |
 | `DENIED_HOSTS` | Não | _(vazio)_ | Hosts bloqueados (formato 3proxy). Outros são permitidos |
+| `SIMPLE_MODE` | Não | _(vazio)_ | Defina como `1` para criar um único proxy IPv4 na porta `START_PORT`, ignorando a enumeração de IPv6 |
 
 ### Build local:
 ```bash
@@ -320,6 +334,17 @@ docker run --privileged -d \
   --name ipv6-proxy --network host --restart always ipv6-proxy
 ```
 
+### Proxy IPv4 simples (proxy único, sem IPv6):
+```bash
+docker run -d \
+  -e SIMPLE_MODE=1 \
+  -e START_PORT=8080 \
+  -e PROXY_TYPE=socks5 \
+  -p 8080:8080 \
+  --name ipv4-proxy --restart always \
+  ethie/ipv6-multiple-proxy-server:v7
+```
+
 ---
 
 ## Notas Importantes
@@ -328,7 +353,8 @@ docker run --privileged -d \
 - O container **precisa** usar `--privileged` para configurar parâmetros sysctl de rede.
 - Um proxy é criado por endereço IPv6 global encontrado no sistema.
 - As portas são atribuídas sequencialmente a partir do `START_PORT`.
-- A imagem publicada `ethie/ipv6-multiple-proxy-server:v6+` é multi-arch (linux/amd64 e linux/arm64). O Docker resolve a variante correta automaticamente.
+- Quando `SIMPLE_MODE=1`, o container ignora a detecção de IPv6 e cria um único proxy IPv4. `--privileged` não é necessário nesse modo.
+- A imagem publicada `ethie/ipv6-multiple-proxy-server:v7+` é multi-arch (linux/amd64 e linux/arm64). O Docker resolve a variante correta automaticamente.
 
 ---
 

@@ -56,6 +56,7 @@ sudo nano /etc/ipv6-proxy/proxy.env
 | `NET_INTERFACE`  | _(auto)_            | Interface de rede (ex.: `eth0`, `ens3`).                       |
 | `ALLOWED_HOSTS`  | _(vazio)_           | Hosts permitidos (formato 3proxy). Outros são bloqueados.      |
 | `DENIED_HOSTS`   | _(vazio)_           | Hosts bloqueados. Outros são permitidos.                       |
+| `SIMPLE_MODE`    | _(vazio)_           | Defina como `1` para criar apenas 1 proxy IPv4 simples, ignorando IPv6. |
 | `PROXY_BIN`      | `/usr/local/bin/3proxy` | Caminho do binário do 3proxy.                              |
 | `CONFIG_FILE`    | `/etc/3proxy/3proxy.cfg` | Onde gravar o config gerado.                              |
 | `RUN_USER_UID`   | `65534`             | UID para o 3proxy após bind (drop de privilégios).             |
@@ -150,3 +151,4 @@ sudo rm -rf /etc/ipv6-proxy /etc/3proxy
 - Parâmetros `sysctl` e `ulimit` são aplicados no host (persistem só até o reboot — use `/etc/sysctl.d/` se quiser fixar).
 - Logs vão para `journald` (via systemd) em vez de `docker logs`.
 - Não precisa de `--privileged` nem `--network host`, mas **precisa ser root** para `sysctl`, `ip_nonlocal_bind` e bind em portas privilegiadas (se aplicável).
+- Com `SIMPLE_MODE=1`, não é necessário ter IPv6 no host e os sysctls IPv6 são ignorados.
