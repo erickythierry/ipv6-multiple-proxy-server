@@ -204,12 +204,11 @@ docker run --privileged -d \
 
 ### Simple IPv4 proxy (single proxy, no IPv6 required):
 ```bash
-docker run -d \
+docker run --privileged -d \
   -e SIMPLE_MODE=1 \
   -e START_PORT=8080 \
   -e PROXY_TYPE=socks5 \
-  -p 8080:8080 \
-  --name ipv4-proxy --restart always \
+  --name ipv4-proxy --network host --restart always \
   ethie/ipv6-multiple-proxy-server:v7
 ```
 
@@ -221,7 +220,7 @@ docker run -d \
 - The container **must** use `--privileged` to configure sysctl network parameters.
 - One proxy is created per global IPv6 address found on the system.
 - Ports are assigned sequentially starting from `START_PORT`.
-- When `SIMPLE_MODE=1`, the container skips IPv6 detection and creates a single IPv4 proxy. `--privileged` is not required in this mode.
+- When `SIMPLE_MODE=1`, the container skips IPv6 detection and creates a single IPv4 proxy. `--privileged` and `--network host` are still required (privileged to raise ulimits for `maxconn`, host network to avoid bridge-mode issues observed in practice).
 - The published image `ethie/ipv6-multiple-proxy-server:v7+` is multi-arch (linux/amd64 and linux/arm64). Docker resolves the correct variant automatically.
 
 ---
@@ -336,12 +335,11 @@ docker run --privileged -d \
 
 ### Proxy IPv4 simples (proxy único, sem IPv6):
 ```bash
-docker run -d \
+docker run --privileged -d \
   -e SIMPLE_MODE=1 \
   -e START_PORT=8080 \
   -e PROXY_TYPE=socks5 \
-  -p 8080:8080 \
-  --name ipv4-proxy --restart always \
+  --name ipv4-proxy --network host --restart always \
   ethie/ipv6-multiple-proxy-server:v7
 ```
 
@@ -353,7 +351,7 @@ docker run -d \
 - O container **precisa** usar `--privileged` para configurar parâmetros sysctl de rede.
 - Um proxy é criado por endereço IPv6 global encontrado no sistema.
 - As portas são atribuídas sequencialmente a partir do `START_PORT`.
-- Quando `SIMPLE_MODE=1`, o container ignora a detecção de IPv6 e cria um único proxy IPv4. `--privileged` não é necessário nesse modo.
+- Quando `SIMPLE_MODE=1`, o container ignora a detecção de IPv6 e cria um único proxy IPv4. `--privileged` e `--network host` continuam necessários (privileged para elevar ulimits exigidos pelo `maxconn`, host network para evitar problemas de bridge observados na prática).
 - A imagem publicada `ethie/ipv6-multiple-proxy-server:v7+` é multi-arch (linux/amd64 e linux/arm64). O Docker resolve a variante correta automaticamente.
 
 ---
